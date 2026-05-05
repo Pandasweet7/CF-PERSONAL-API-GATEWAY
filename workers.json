@@ -1,0 +1,142 @@
+export default {
+  async fetch(request, env) {
+    // 1. 处理跨域请求 (CORS)，这是客户端能够调通的基础
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      });
+    }
+
+    // 🌟 2. 全局安全校验（防盗刷锁）🌟
+    const authHeader = request.headers.get("Authorization");
+    // 校验客户端传来的 Key 是否与你设置的 PROXY_KEY 匹配
+    if (!authHeader || authHeader !== `Bearer ${env.PROXY_KEY}`) {
+      return new Response(JSON.stringify({ 
+        error: { message: "Auth failed. 你的全局 API Key 不正确或未提供，请检查！", type: "invalid_request_error" } 
+      }), { 
+        status: 401, 
+        headers: { 
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*"
+        } 
+      });
+    }
+
+    const url = new URL(request.url);
+    let urlPath = url.pathname;
+
+    // 3. 专门处理客户端的“检测”和“获取模型列表”请求 (GET 请求)
+    if (request.method === "GET") {
+      if (urlPath.includes("/models")) {
+        // 返回一个虚拟的空模型列表，欺骗客户端让它显示“检测成功”
+        return new Response(JSON.stringify({ object: "list", data: [] }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+      return new Response("Proxy is running securely!", { 
+        status: 200, 
+        headers: { "Access-Control-Allow-Origin": "*" } 
+      });
+    }
+
+    // 拦截其他非 POST 请求
+    if (request.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Only POST method is allowed for completions" }), { 
+        status: 405, 
+        headers: { "Content-Type": "application/json" } 
+      });
+    }
+
+    try {
+      const body = await request.clone().json();
+      const modelName = body.model || "";
+      
+      let targetBaseUrl = "";
+      let apiKey = "";
+
+      // 4. 路由分发逻辑
+      if (modelName.startsWith("cerebras/")) {
+        targetBaseUrl = "https://api.cerebras.ai";
+        apiKey = env.CEREBRAS_KEY;
+        body.model = modelName.replace("cerebras/", ""); 
+        
+      } else if (modelName.startsWith("openrouter/")) {
+        targetBaseUrl = "https://openrouter.ai/api";
+        apiKey = env.OPENROUTER_KEY;
+        body.model = modelName.replace("openrouter/", "");
+
+      } else if (modelName.startsWith("blaze/")) {
+        targetBaseUrl = "https://blazeai.boxu.dev/api";
+        apiKey = env.BLAZE_KEY;
+        body.model = modelName.replace("blaze/", "");
+        
+      } else if (modelName.startsWith("kilo/")) {
+        targetBaseUrl = "https://api.kilo.ai/api/gateway"; 
+        apiKey = env.KILO_KEY;
+        body.model = modelName.replace("kilo/", "");
+        
+      } else if (modelName.startsWith("nvidia/")) {
+        targetBaseUrl = "https://integrate.api.nvidia.com";
+        apiKey = env.NVIDIA_KEY;
+        body.model = modelName.replace("nvidia/", "");
+        
+      } else if (modelName.startsWith("free/")) {
+        // 去掉了末尾的 /v1，由后面的 urlPath 动态拼接
+        targetBaseUrl = "https://api.freetheai.xyz";
+        apiKey = env.FREETHEAI_KEY;
+        body.model = modelName.replace("free/", "");
+        
+      } else if (modelName.startsWith("@cf/")) {
+        targetBaseUrl = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai`;
+        apiKey = env.CF_API_TOKEN;
+      } else {
+        return new Response(JSON.stringify({ error: "Unknown model prefix. Please use cerebras/, openrouter/, blaze/, kilo/, nvidia/, free/, or @cf/." }), { 
+          status: 400,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+
+      // 5. 智能路径拼接
+      if (!urlPath.startsWith("/v1")) {
+         urlPath = "/v1" + (urlPath === "/" ? "/chat/completions" : urlPath);
+      }
+      
+      const fetchUrl = `${targetBaseUrl}${urlPath}`;
+
+      // 6. 转发请求到真实的服务商
+      const response = await fetch(fetchUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+          "HTTP-Referer": "https://xxx.xxx.indevs.in", // 你自定义绑定的域名
+          "X-Title": "CF API Proxy"
+        },
+        body: JSON.stringify(body)
+      });
+
+      // 7. 原样返回流式响应
+      return new Response(response.body, {
+        status: response.status,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Content-Type": response.headers.get("Content-Type") || "application/json"
+        }
+      });
+
+    } catch (error) {
+      return new Response(JSON.stringify({ error: error.message }), { 
+        status: 500,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+  }
+};
