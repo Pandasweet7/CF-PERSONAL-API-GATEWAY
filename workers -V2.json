@@ -1,0 +1,255 @@
+export default {
+  async fetch(request, env) {
+    // 1. 处理跨域请求 (CORS)
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      });
+    }
+
+    const url = new URL(request.url);
+    let urlPath = url.pathname;
+
+    // 获取后台专属密码（如果没设置，默认借用 PROXY_KEY 防锁死）
+    const adminAuthKey = env.ADMIN_PASSWORD || env.PROXY_KEY;
+
+    // 🌟🌟🌟 2. 网页可视化控制面板 (中英双语版) 🌟🌟🌟
+    if (request.method === "GET" && urlPath === "/admin") {
+      const key = url.searchParams.get("key");
+      if (key !== adminAuthKey) {
+        return new Response("Unauthorized. 未授权访问 / Access Denied. <br>请在地址栏带上正确的密码参数，例如: ?key=你的后台密码", { 
+          status: 401, 
+          headers: { "Content-Type": "text/html;charset=UTF-8" }
+        });
+      }
+
+      const roles = ["assistant", "coder", "reasoner", "writer", "vision", "researcher", "artist"];
+      const currentValues = {};
+      for (const r of roles) {
+        currentValues[r] = await env.KV_STORE.get(`role/${r}`) || "";
+      }
+
+      const html = `
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>A.I. Router Console | 旗舰路由控制台</title>
+          <style>
+            body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background-color: #f0f2f5; padding: 20px; display: flex; justify-content: center; color: #333; }
+            .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); max-width: 650px; width: 100%; }
+            h2 { border-bottom: 2px solid #edf2f7; padding-bottom: 15px; text-align: center; color: #1a202c; font-size: 22px; }
+            .sub-title { font-size: 14px; color: #718096; display: block; margin-top: 5px; font-weight: normal; }
+            .form-group { margin-bottom: 18px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+            label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 15px; color: #2d3748; }
+            .en-label { font-size: 13px; color: #718096; font-weight: normal; margin-left: 5px; }
+            input[type="text"] { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e0; font-size: 14px; outline: none; box-sizing: border-box; transition: border-color 0.2s; }
+            input[type="text"]:focus { border-color: #4299e1; box-shadow: 0 0 0 3px rgba(66,153,225,0.2); }
+            button { width: 100%; padding: 14px; background: #3182ce; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 15px; transition: background 0.3s; }
+            button:hover { background: #2b6cb0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h2>🎛️ 旗舰级 Agent 路由调度<span class="sub-title">Flagship AI Agent Routing Console</span></h2>
+            <form action="/api/save-routes" method="POST">
+              <input type="hidden" name="key" value="${key}">
+              
+              <div class="form-group">
+                <label>⚡ 日常助理 (role/assistant)<span class="en-label">/ Daily Assistant</span></label>
+                <input type="text" name="assistant" value="${currentValues.assistant || "cerebras/llama3.1-8b"}" list="l-as" placeholder="ID e.g. cerebras/llama3.1-8b">
+                <datalist id="l-as"><option value="cerebras/llama3.1-8b"><option value="openrouter/anthropic/claude-3-haiku"></datalist>
+              </div>
+              
+              <div class="form-group">
+                <label>💻 编程架构 (role/coder)<span class="en-label">/ Coder & Architecture</span></label>
+                <input type="text" name="coder" value="${currentValues.coder || "nvidia/qwen/qwen3-coder-480b-a35b-instruct"}" list="l-co">
+                <datalist id="l-co"><option value="nvidia/qwen/qwen3-coder-480b-a35b-instruct"><option value="blaze/qwen3.5-omni-plus-thinking"></datalist>
+              </div>
+              
+              <div class="form-group">
+                <label>🧠 深度推理 (role/reasoner)<span class="en-label">/ Deep Reasoning</span></label>
+                <input type="text" name="reasoner" value="${currentValues.reasoner || "blaze/moonshotai/kimi-k2-thinking"}" list="l-re">
+                <datalist id="l-re"><option value="blaze/moonshotai/kimi-k2-thinking"><option value="cerebras/llama3.1-70b"></datalist>
+              </div>
+              
+              <div class="form-group">
+                <label>✍️ 文艺创作 (role/writer)<span class="en-label">/ Creative Writer</span></label>
+                <input type="text" name="writer" value="${currentValues.writer || "nvidia/moonshotai/kimi-k2.6"}" list="l-wr">
+                <datalist id="l-wr"><option value="nvidia/moonshotai/kimi-k2.6"><option value="blaze/MiniMax-M2.7-highspeed"></datalist>
+              </div>
+              
+              <div class="form-group">
+                <label>👁️ 视觉理解 (role/vision)<span class="en-label">/ Vision & Multimodal</span></label>
+                <input type="text" name="vision" value="${currentValues.vision || "nvidia/meta/llama-3.2-90b-vision-instruct"}" list="l-vi">
+                <datalist id="l-vi"><option value="nvidia/meta/llama-3.2-90b-vision-instruct"></datalist>
+              </div>
+              
+              <div class="form-group">
+                <label>🔍 联网搜索 (role/researcher)<span class="en-label">/ Web Researcher</span></label>
+                <input type="text" name="researcher" value="${currentValues.researcher || "blaze/qwen3.6-plus-thinking-search"}" list="l-se">
+                <datalist id="l-se"><option value="blaze/qwen3.6-plus-thinking-search"></datalist>
+              </div>
+              
+              <div class="form-group">
+                <label>🎨 绘图创作 (role/artist)<span class="en-label">/ Art & Image Gen</span></label>
+                <input type="text" name="artist" value="${currentValues.artist || "@cf/stabilityai/stable-diffusion-xl-base-1.0"}" list="l-ar">
+                <datalist id="l-ar"><option value="@cf/stabilityai/stable-diffusion-xl-base-1.0"><option value="openrouter/openai/dall-e-3"></datalist>
+              </div>
+              
+              <button type="submit">保存全局配置 💾 Save Configuration</button>
+            </form>
+          </div>
+        </body>
+        </html>
+      `;
+      return new Response(html, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
+    }
+
+    // 🌟🌟🌟 3. 处理表单保存逻辑 (验证后台密码) 🌟🌟🌟
+    if (request.method === "POST" && urlPath === "/api/save-routes") {
+      const formData = await request.formData();
+      if (formData.get("key") !== adminAuthKey) return new Response("Unauthorized", { status: 401 });
+      
+      const roles = ["assistant", "coder", "reasoner", "writer", "vision", "researcher", "artist"];
+      for (const r of roles) {
+        await env.KV_STORE.put(`role/${r}`, formData.get(r).trim());
+      }
+      return new Response(`
+        <html><body style='text-align:center;padding:50px;font-family:sans-serif;background:#f0f2f5;'>
+          <div style='background:white;padding:30px;border-radius:10px;display:inline-block;box-shadow:0 4px 12px rgba(0,0,0,0.1);'>
+            <h2 style='color:#38a169;'>✅ 配置已生效 / Config Saved Successfully</h2>
+            <br>
+            <a href='/admin?key=${adminAuthKey}' style='padding:10px 20px;background:#3182ce;color:white;text-decoration:none;border-radius:5px;'>返回控制台 / Return</a>
+          </div>
+        </body></html>
+      `, { headers: { "Content-Type": "text/html;charset=UTF-8" }});
+    }
+
+    // 4. 标准 API 逻辑 (兼容性测试)
+    if (request.method === "GET") {
+      if (urlPath.includes("/models")) return new Response(JSON.stringify({ object: "list", data: [] }), { status: 200, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+      return new Response("API Gateway is running.", { status: 200, headers: { "Access-Control-Allow-Origin": "*" } });
+    }
+
+    // 🌟🌟🌟 API 调用验证，依然使用 PROXY_KEY 🌟🌟🌟
+    const authHeader = request.headers.get("Authorization");
+    if (!authHeader || authHeader !== `Bearer ${env.PROXY_KEY}`) {
+      return new Response(JSON.stringify({ error: "Invalid API Key. 全局调用凭证不正确。" }), { status: 401, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+    }
+
+    try {
+      let body = await request.json();
+      
+      // 核心：消息净化 (移除 reasoning_content 等非法字段防报错)
+      if (body.messages && Array.isArray(body.messages)) {
+        body.messages = body.messages.map(msg => {
+          const clean = { role: msg.role, content: msg.content };
+          if (msg.name) clean.name = msg.name; 
+          return clean;
+        });
+      }
+
+      let modelName = body.model || "";
+      if (modelName.startsWith("role/")) {
+        modelName = await env.KV_STORE.get(modelName) || "cerebras/llama3.1-8b";
+      }
+      body.model = modelName;
+
+      // 🌟🌟🌟 黑魔法：图像模型 Markdown 伪装机制 🌟🌟🌟
+      const isCFImage = modelName === "@cf/stabilityai/stable-diffusion-xl-base-1.0";
+      
+      if (isCFImage && (!urlPath.includes("/images/generations"))) {
+        // 从文字聊天记录提取最后一句话作为提示词
+        let promptText = "A beautiful artwork";
+        if (body.messages && body.messages.length > 0) {
+          promptText = body.messages[body.messages.length - 1].content;
+        }
+
+        // 调用 Cloudflare 画图 API
+        const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0`;
+        const cfRes = await fetch(cfUrl, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${env.CF_API_TOKEN}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: promptText })
+        });
+
+        if (!cfRes.ok) throw new Error("Cloudflare Image API Failed");
+
+        // 将二进制图片转为 Base64
+        const arrayBuffer = await cfRes.arrayBuffer();
+        let binary = '';
+        const bytes = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < bytes.byteLength; i++) { binary += String.fromCharCode(bytes[i]); }
+        const base64String = btoa(binary);
+
+        // 组装 Markdown 格式的返回内容
+        const markdownContent = `🎨 **生成的图像：**\n\n![Generated Image](data:image/png;base64,${base64String})\n\n*提示词: ${promptText}*`;
+
+        // 欺骗客户端：如果是流式请求，按流式格式返回；否则返回标准 JSON
+        if (body.stream) {
+          const streamChunk = `data: ${JSON.stringify({
+            id: "chatcmpl-image", object: "chat.completion.chunk", model: modelName,
+            choices: [{ delta: { content: markdownContent } }]
+          })}\n\ndata: [DONE]\n\n`;
+          return new Response(streamChunk, { headers: { "Content-Type": "text/event-stream", "Access-Control-Allow-Origin": "*" } });
+        } else {
+          return new Response(JSON.stringify({
+            id: "chatcmpl-image", object: "chat.completion", created: Math.floor(Date.now() / 1000), model: modelName,
+            choices: [{ message: { role: "assistant", content: markdownContent }, finish_reason: "stop" }]
+          }), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+        }
+      }
+      // 🌟🌟🌟 图像魔法结束 🌟🌟🌟
+
+      let targetBaseUrl = "";
+      let apiKey = "";
+
+      const config = {
+        "cerebras/": ["https://api.cerebras.ai", env.CEREBRAS_KEY],
+        "openrouter/": ["https://openrouter.ai/api", env.OPENROUTER_KEY],
+        "blaze/": ["https://blazeai.boxu.dev/api", env.BLAZE_KEY],
+        "kilo/": ["https://api.kilo.ai/api/gateway", env.KILO_KEY],
+        "nvidia/": ["https://integrate.api.nvidia.com", env.NVIDIA_KEY],
+        "free/": ["https://api.freetheai.xyz", env.FREETHEAI_KEY],
+        "@cf/": [`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai`, env.CF_API_TOKEN]
+      };
+
+      const matchedPrefix = Object.keys(config).find(p => modelName.startsWith(p));
+      if (matchedPrefix) {
+        targetBaseUrl = config[matchedPrefix][0];
+        apiKey = config[matchedPrefix][1];
+        if (matchedPrefix !== "@cf/") body.model = modelName.replace(matchedPrefix, "");
+      } else {
+        return new Response(JSON.stringify({ error: `Unsupported prefix or role: ${modelName}` }), { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+
+      if (!urlPath.startsWith("/v1")) urlPath = "/v1" + (urlPath === "/" ? "/chat/completions" : urlPath);
+      const fetchUrl = `${targetBaseUrl}${urlPath}`;
+
+      // 🌟🌟🌟 完美回归：HTTP-Referer 和 X-Title 🌟🌟🌟
+      const response = await fetch(fetchUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+          "HTTP-Referer": "https://www.qq.com",
+          "X-Title": "Flagship Router"
+        },
+        body: JSON.stringify(body)
+      });
+
+      return new Response(response.body, {
+        status: response.status,
+        headers: { "Access-Control-Allow-Origin": "*", "Content-Type": response.headers.get("Content-Type") || "application/json" }
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { "Content-Type": "application/json" } });
+    }
+  }
+};
